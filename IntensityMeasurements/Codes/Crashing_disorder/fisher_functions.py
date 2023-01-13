@@ -50,7 +50,6 @@ def get_WS_symm(Hs):
     WS_symm = WS + WS.T.conj()
     return WS_symm
 
-
 def getFisherOperator(Hs):
     der = Hs[-1] - Hs[0]
     return 4*der.T.conj() @ der
@@ -62,43 +61,13 @@ def getFisherOperator(Hs):
 # Give option to project on another basis (pass from modes to pixels)
 def getOutputFields(X, Hs):    
     Xnorm = X/(np.sum(np.abs(X)**2,axis=-1, keepdims=True))**(1/2)
-    if len(np.shape(X)) == 1:
-        Ys = Hs @ Xnorm
-    elif len(np.shape(X)) == 2:
-        Ys = np.squeeze(Hs @ Xnorm[:,None,:,None])
+    if (len(np.shape(Hs)) == 2) or (len(np.shape(X)) == 1):
+        Ys = Hs @ Xnorm[...,None]
+    elif len(np.shape(Hs)) == 3:
+        Ys = np.squeeze(Hs[:,None,...] @ Xnorm[...,None])
     else:
         raise ValueError('Dimension of X is invalid')
-    return Ys
-
-#############################################################################
-# Get Fisher information 
-#############################################################################
-
-# Implement 3pts derivative
-def fisherPerMode(X, Hs, noise='poisson'):
-    Ys = getOutputFields(X, Hs)
-    if noise == 'poisson':
-        if  len(np.shape(Ys)) == 2:
-            return 4*(np.abs(Ys[1]) - np.abs(Ys[0]))**2        
-        elif  len(np.shape(Ys)) == 3:
-            return 4*(np.abs(Ys[:,1]) - np.abs(Ys[:,0]))**2
-        else:
-            raise ValueError('Dimension of Ys is invalid')
-    elif noise =='gaussian':
-        if  len(np.shape(Ys)) == 2:
-            return (np.abs(Ys[1])**2 - np.abs(Ys[0])**2)**2        
-        elif  len(np.shape(Ys)) == 3:
-            return (np.abs(Ys[:,1])**2 - np.abs(Ys[:,0])**2)**2
-        else:
-            raise ValueError('Dimension of Ys is invalid')
-    else:
-        raise ValueError('Invalid noise option')
-
-def fisher(X, Hs, noise='poisson'):
-    return np.sum(fisherPerMode(X, Hs, noise=noise), axis=-1)
-
-
-
+    return np.squeeze(Ys)
 
 def getYpix(X,H,modes_out):
     Y = H @ X
@@ -108,3 +77,63 @@ def getPixAmpChange(X,H0,H1,modes_out):
     Y0 = getYpix(X,H0,modes_out)
     Y1 = getYpix(X,H1,modes_out)
     return np.abs(Y1)-np.abs(Y0)
+
+
+# def getOutputFields(X, Hs):    
+#     Xnorm = X/(np.sum(np.abs(X)**2,axis=-1, keepdims=True))**(1/2)
+#     if len(np.shape(X)) == 1:
+#         Ys = Hs @ Xnorm
+#     elif len(np.shape(X)) == 2:
+#         Ys = np.squeeze(Hs @ Xnorm[:,None,:,None])
+#     else:
+#         raise ValueError('Dimension of X is invalid')
+#     return np.squeeze(Ys)
+
+#############################################################################
+# Get Fisher information 
+#############################################################################
+
+# Implement 3pts derivative
+def fisherPerMode(X, Hs, noise='poisson', method='2pts'):
+    Ys = getOutputFields(X, Hs)
+    if noise == 'poisson':
+        if  len(np.shape(Ys)) == 2:
+            return 4*(np.abs(Ys[1]) - np.abs(Ys[0]))**2        
+        elif  len(np.shape(Ys)) == 3:
+            return 4*(np.abs(Ys[:,1]) - np.abs(Ys[:,0]))**2
+        else:
+            raise ValueError('Dimension of Ys is invalid')
+    elif noise =='gaussian':
+        if method=='2pts':
+            return (np.abs(Ys[-1])**2 - np.abs(Ys[0])**2)**2
+        elif method=='3pts':
+            return (2*np.real((Ys[-1]-Ys[0])*Ys[1].conj()))**2
+        else:
+            raise ValueError('Invalid option for method use 2pts or 3pts')
+    else:
+        raise ValueError('Invalid noise option')
+
+# def fisherPerMode(X, Hs, noise='poisson', method='2pts'):
+#     Ys = getOutputFields(X, Hs)
+#     if noise == 'poisson':
+#         if  len(np.shape(Ys)) == 2:
+#             return 4*(np.abs(Ys[1]) - np.abs(Ys[0]))**2        
+#         elif  len(np.shape(Ys)) == 3:
+#             return 4*(np.abs(Ys[:,1]) - np.abs(Ys[:,0]))**2
+#         else:
+#             raise ValueError('Dimension of Ys is invalid')
+#     elif noise =='gaussian':
+#         if  len(np.shape(Ys)) == 2:
+#             return (np.abs(Ys[1])**2 - np.abs(Ys[0])**2)**2        
+#         elif  len(np.shape(Ys)) == 3:
+#             return (np.abs(Ys[:,1])**2 - np.abs(Ys[:,0])**2)**2
+#         else:
+#             raise ValueError('Dimension of Ys is invalid')
+#     else:
+#         raise ValueError('Invalid noise option')
+
+def fisher(X, Hs, noise='poisson'):
+    return np.sum(fisherPerMode(X, Hs, noise=noise), axis=-1)
+
+
+

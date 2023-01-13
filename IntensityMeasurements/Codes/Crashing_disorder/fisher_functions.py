@@ -1,7 +1,8 @@
 import numpy as np
 
-
+#############################################################################
 # Tensor defs
+#############################################################################
 
 def sym_exp(H):
     return H[...,None]*np.conj(H[:,None,:])
@@ -54,8 +55,11 @@ def getFisherOperator(Hs):
     der = Hs[-1] - Hs[0]
     return 4*der.T.conj() @ der
 
-# 
+#############################################################################
+# Get output fields
+#############################################################################
 
+# Give option to project on another basis (pass from modes to pixels)
 def getOutputFields(X, Hs):    
     Xnorm = X/(np.sum(np.abs(X)**2,axis=-1, keepdims=True))**(1/2)
     if len(np.shape(X)) == 1:
@@ -65,6 +69,10 @@ def getOutputFields(X, Hs):
     else:
         raise ValueError('Dimension of X is invalid')
     return Ys
+
+#############################################################################
+# Get Fisher information 
+#############################################################################
 
 # Implement 3pts derivative
 def fisherPerMode(X, Hs, noise='poisson'):
@@ -95,6 +103,7 @@ def fisher(X, Hs, noise='poisson'):
 def getYpix(X,H,modes_out):
     Y = H @ X
     return np.sum(Y[:,None]*modes_out,axis=0)
+
 def getPixAmpChange(X,H0,H1,modes_out):
     Y0 = getYpix(X,H0,modes_out)
     Y1 = getYpix(X,H1,modes_out)

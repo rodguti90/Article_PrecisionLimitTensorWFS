@@ -1,5 +1,8 @@
 import numpy as np
 
+def normalize(x):
+    return x/np.linalg.norm(x)
+
 #############################################################################
 # Tensor defs
 #############################################################################
@@ -58,13 +61,17 @@ def getFisherOperator(Hs):
 # Get output fields
 #############################################################################
 
+def normalizevecs(X):
+    return X/(np.sum(np.abs(X)**2,axis=-1, keepdims=True))**(1/2)
+
 # Give option to project on another basis (pass from modes to pixels)
-def getOutputFields(X, Hs):    
-    Xnorm = X/(np.sum(np.abs(X)**2,axis=-1, keepdims=True))**(1/2)
+def getOutputFields(X, H):
+    Hs = np.array(H)    
+    Xnorm = normalizevecs(X)
     if (len(np.shape(Hs)) == 2) or (len(np.shape(X)) == 1):
         Ys = Hs @ Xnorm[...,None]
     elif len(np.shape(Hs)) == 3:
-        Ys = np.squeeze(Hs[:,None,...] @ Xnorm[...,None])
+        Ys = Hs[:,None,...] @ Xnorm[...,None]
     else:
         raise ValueError('Dimension of X is invalid')
     return np.squeeze(Ys)
@@ -135,5 +142,40 @@ def fisherPerMode(X, Hs, noise='poisson', method='2pts'):
 def fisher(X, Hs, noise='poisson'):
     return np.sum(fisherPerMode(X, Hs, noise=noise), axis=-1)
 
+#############################################################################
+# Get Fisher information 
+#############################################################################
 
+def derYop(X, H):
+    Ys = getOutputFields(X, H)
+    # y1 = Hs[-1] @ x
+    # y0 = Hs[0] @ x
+    # Y1 = Ys[-1,...,None] * np.expand_dims(Ys[-1], axis=-2).conj()
+    # Y0 = Ys[0,...,None] * np.expand_dims(Ys[0], axis=-2).conj()
+    Youter = Ys[...,None] * np.expand_dims(Ys, axis=-2).conj()
+    # Y1 =  y1[:,None] * y1[None,:].conj()
+    # Y0 =  y0[:,None] * y0[None,:].conj()
+    return Youter[-1] - Youter[0]
 
+def get_moim(X, H, all=False):
+    X=normalizevecs(X)
+    Yder = derYop(X, H)
+    if len(X.shape) == 1:
+        lam, v = np.linalg.eigh(Yder)
+        sort_ind = np.argsort(lam**2)
+        if all:
+            return v[:,sort_ind], lam[sort_ind]
+        else:
+            return v[:,sort_ind[-2:]], lam[sort_ind[-2:]]
+    else:
+        nxs = X.shape[0]
+        vecs = np.empty((nxs,H[0].shape[0],2), complex)
+        vals = np.empty((nxs,2), complex)
+        for indx in range(nxs):
+            lam, v = np.linalg.eigh(Yder[indx])
+            sort_ind = np.argsort(lam**2)
+
+            vecs[indx] = v[:,sort_ind[-2:]]
+            vals[indx] = lam[sort_ind[-2:]]
+
+        return vecs, vals

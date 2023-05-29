@@ -2,6 +2,8 @@ import numpy as np
 import gc
 import scipy
 import functools
+from numba import jit
+
 rng = np.random.default_rng(12345)
 
 from .operations import unfold, nmode_prod
@@ -9,8 +11,39 @@ from .functions import complexdisk_rand
 
 
 
-# HOSVD
+def get_HOSvec(x, n_mode, n_vec=None):
+    """Computes the higher-order singular decomposition of a tensor.
 
+    Computes the HOSVD via succesisve computations of the SVD of the 
+    various matrix unfoldings of the tensor.
+
+    Parameters
+    ----------
+    x : np.array
+    rank : tuple or list of int (optional)
+
+    Returns
+    -------
+    us : list of np.array
+        List on matrices containing the higher order singular vectors
+    s : np.array
+        Core tensor
+    """
+    
+    if n_vec is None:
+        n_vec = x.shape[n_mode]
+
+    unfold_x = unfold(x,n_mode)
+    if unfold_x.shape[0] < unfold_x.shape[1]:
+        fl=False
+    else:
+        fl=True
+    gc.collect()
+    u,_,_ = np.linalg.svd(unfold_x,full_matrices=fl)
+
+    return u[:,:n_vec]
+
+# HOSVD
 def hosvd(x, rank=()):
     """Computes the higher-order singular decomposition of a tensor.
 
@@ -224,11 +257,33 @@ def power3herm(x, max_iter, init_eigvec=None, evol=False):
     ortovec = np.sum(x * eigvec[:,None] * eigvec[None,:].conj(), axis=(1,2))
     for n_iter in range(max_iter):
         eigvec = np.sum(x * ortovec[:,None,None] * eigvec[:,None], axis=(0,1))
-        norm_eigvec = np.linalg.norm(eigvec)
-        eigvec /= norm_eigvec 
+        # norm_eigvec = np.linalg.norm(eigvec)
+        eigvec /= np.linalg.norm(eigvec) 
         ortovec = np.sum(x * eigvec[:,None] * eigvec[None,:].conj(), axis=(1,2))
         
         if evol:
             x_approx = ortovec[:,None,None]*eigvec[None,:,None].conj()*eigvec[None,None,:]
             cost_evol += [np.linalg.norm(x-x_approx)/norm_x]
     return ortovec, eigvec, cost_evol
+
+# @jit(nopython=True)
+def power4herm(x, max_iter, init_vecs, evol=False):
+    norm_x = np.sum(np.abs(x)**2)**(1/2)
+    outvec = init_vecs[0]
+    invec = init_vecs[1]
+    
+    cost_evol = []
+    for n_iter in range(max_iter):
+        invec = np.sum(np.sum(np.sum(x * outvec[:,None,None,None].conj() * outvec[:,None,None] * invec[:,None]
+            , axis=0), axis=0), axis=0)
+        invec /= np.sum(np.abs(invec)**2)**(1/2)
+
+        outvec = np.sum(np.sum(np.sum(x * outvec[:,None,None] * invec[:,None] * invec.conj()
+            , axis=1), axis=1), axis=1)
+        lam = np.sum(np.abs(outvec)**2)**(1/2)
+        outvec /= lam
+        
+        if evol:
+            x_approx = lam*outvec[:,None,None,None]*outvec[:,None,None].conj()*invec[:,None].conj()*invec
+            cost_evol += [np.sum(np.abs(x-x_approx)**2)**(1/2)/norm_x]
+    return [outvec, invec], cost_evol

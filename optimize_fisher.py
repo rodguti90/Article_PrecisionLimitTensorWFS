@@ -45,6 +45,12 @@ def fisher_gauss_moim(Y0, Y1):
     L, _ = torch.linalg.eigh(Ymat1-Ymat0)
     return 1/torch.sum(L**2)
 
+def fisher_gauss_b1o(Y0, Y1):
+    Ymat1 =  Y1[:,None] * Y1[None,:].conj()
+    Ymat0 =  Y0[:,None] * Y0[None,:].conj()
+    L, _ = torch.linalg.eigh(Ymat1-Ymat0)
+    return 1/torch.max(L**2)
+
 def poisson_fisher(Y0, Y1):
     fisher = 4*torch.sum((torch.abs(Y1) - torch.abs(Y0))**2)#/torch.abs(Y1)**2)
     return 1/fisher
@@ -53,7 +59,7 @@ def gaussian_fisher(Y0, Y1):
     fisher = torch.sum((torch.abs(Y1)**2 - torch.abs(Y0)**2)**2)#/torch.abs(Y1)**2)
     return 1/fisher
 
-def optimize_input(Xinit,TMs, n_epochs=200, lr=1e-2, noise='poisson', n_opt_output=False): 
+def optimize_input(Xinit,TMs, n_epochs=200, lr=1e-2, noise='gaussian', n_opt_output=False): 
     model = OutputFields(TMs[0],
                     TMs[1],
                     Xinit=Xinit,
@@ -64,6 +70,8 @@ def optimize_input(Xinit,TMs, n_epochs=200, lr=1e-2, noise='poisson', n_opt_outp
         loss_fn = gaussian_fisher
     elif noise == 'moim':
         loss_fn = fisher_gauss_moim
+    elif noise == 'b1o':
+        loss_fn = fisher_gauss_b1o
     else:
         raise ValueError('Invalid noise option')
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -81,7 +89,7 @@ def optimize_input(Xinit,TMs, n_epochs=200, lr=1e-2, noise='poisson', n_opt_outp
 
     return 1/loss.item(), X_final, loss_evol
 
-def optimize_input_list(inputs, TMs, n_epochs=200, lr=1e-2, noise='poisson', n_opt_output=False):
+def optimize_input_list(inputs, TMs, n_epochs=200, lr=1e-2, noise='gaussian', n_opt_output=False):
     Xfinal_list = np.empty_like(inputs)
     fisherfinal_list = np.empty((len(inputs)))
     for k in range(len(inputs)):

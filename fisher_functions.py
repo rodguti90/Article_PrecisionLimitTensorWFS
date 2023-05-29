@@ -65,9 +65,12 @@ def normalizevecs(X):
     return X/(np.sum(np.abs(X)**2,axis=-1, keepdims=True))**(1/2)
 
 # Give option to project on another basis (pass from modes to pixels)
-def getOutputFields(X, H):
-    Hs = np.array(H)    
-    Xnorm = normalizevecs(X)
+def getOutputFields(X, H, normalize=True):
+    Hs = np.array(H)  
+    if normalize:  
+        Xnorm = normalizevecs(X)
+    else:
+        Xnorm = X.copy()
     if (len(np.shape(Hs)) == 2) or (len(np.shape(X)) == 1):
         Ys = Hs @ Xnorm[...,None]
     elif len(np.shape(Hs)) == 3:
@@ -101,7 +104,7 @@ def getPixAmpChange(X,H0,H1,modes_out):
 #############################################################################
 
 # Implement 3pts derivative
-def fisherPerMode(X, Hs, noise='poisson', method='2pts'):
+def fisherPerMode(X, Hs, noise='gaussian', method='2pts'):
     Ys = getOutputFields(X, Hs)
     if noise == 'poisson':
         if  len(np.shape(Ys)) == 2:
@@ -139,7 +142,7 @@ def fisherPerMode(X, Hs, noise='poisson', method='2pts'):
 #     else:
 #         raise ValueError('Invalid noise option')
 
-def fisher(X, Hs, noise='poisson'):
+def fisher(X, Hs, noise='gaussian'):
     return np.sum(fisherPerMode(X, Hs, noise=noise), axis=-1)
 
 #############################################################################

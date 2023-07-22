@@ -5,8 +5,8 @@ import numpy as np
 rng = np.random.default_rng(12345)
 
 
-def normalize(x):
-    return x/np.linalg.norm(x)
+# def normalize(x):
+#     return x/np.linalg.norm(x)
 
 def _tensor_roll_indices(x,n):
     inds = np.arange(len(np.shape(x)))

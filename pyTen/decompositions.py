@@ -10,39 +10,10 @@ import numpy as np
 
 
 
-def get_HOSvec(x, n_mode, n_vec=None):
-    """Computes the higher-order singular vectors of a tensor along a given mode.
-
-    Computes the HOSVD via succesisve computations of the SVD of the 
-    various matrix unfoldings of the tensor.
-
-    Parameters
-    ----------
-    x : np.array
-    rank : tuple or list of int (optional)
-
-    Returns
-    -------
-    us : list of np.array
-        List on matrices containing the higher order singular vectors
-    s : np.array
-        Core tensor
-    """
-    
-    if n_vec is None:
-        n_vec = x.shape[n_mode]
-
-    unfold_x = unfold(x,n_mode)
-    if unfold_x.shape[0] < unfold_x.shape[1]:
-        fl=False
-    else:
-        fl=True
-    gc.collect()
-    u,_,_ = np.linalg.svd(unfold_x,full_matrices=fl)
-
-    return u[:,:n_vec]
-
+#############################################################################
 # HOSVD
+#############################################################################
+
 def hosvd(x, rank=()):
     """Computes the higher-order singular decomposition of a tensor.
 
@@ -79,7 +50,35 @@ def hosvd(x, rank=()):
         s=nmode_prod(s,us[n].T.conj(),n)
     return us, s
 
+def get_HOSvec(x, n_mode, n_vec=None):
+    """Computes the higher-order singular vectors of a tensor along a given mode.
+
+    Parameters
+    ----------
+    x : np.array
+    rank : tuple or list of int (optional)
+
+    Returns
+    -------
+    np.array
+        Singular vectors along the chosen mode.
+    """
+    if n_vec is None:
+        n_vec = x.shape[n_mode]
+
+    unfold_x = unfold(x,n_mode)
+    if unfold_x.shape[0] < unfold_x.shape[1]:
+        fl=False
+    else:
+        fl=True
+    gc.collect()
+    u,_,_ = np.linalg.svd(unfold_x,full_matrices=fl)
+
+    return u[:,:n_vec]
+
+#############################################################################
 # ALS
+#############################################################################
 
 def _init_fact_matrices(x, rank, init_fact_mat=None):
     order = len(x.shape)
@@ -92,7 +91,6 @@ def _init_fact_matrices(x, rank, init_fact_mat=None):
         fact_mat = init_fact_mat
     return fact_mat.copy()
 
-
 def _als_mode_loop(x, fact_mat):
     order = len(x.shape)
     for mode in range(order):
@@ -101,25 +99,23 @@ def _als_mode_loop(x, fact_mat):
         fact_mat[mode] = unfold(x, mode) @  np.linalg.pinv(kr_prod.T)
     return fact_mat
 
-
 def als(x, rank, max_iter, init_fact_mat=None, evol=False):
     """Computes the canonical polyadic decomposition via ALS algorithm"""
-    
     norm_x = np.linalg.norm(x)
     fact_mat =_init_fact_matrices(x, rank, init_fact_mat=init_fact_mat)
     
     cost_evol = []
-    for n_iter in range(max_iter):
+    for _ in range(max_iter):
         fact_mat = _als_mode_loop(x, fact_mat)
-
         if evol:
             x_approx = sum_outers(fact_mat)#np.einsum('ij,kj,lj',fact_mat[0],fact_mat[1],fact_mat[2])
             cost_evol += [np.linalg.norm(x-x_approx)/norm_x]
 
     return fact_mat, cost_evol
 
-
-# Symmetric ALSs
+#############################################################################
+# Partially symmetric ALS
+#############################################################################
 
 def _symmetrize_fact_mats(fact_mats, anti=False):
     norm_fm0 = _norm_fact_mat(fact_mats[0])
@@ -131,12 +127,8 @@ def _symmetrize_fact_mats(fact_mats, anti=False):
     fact_mat1 = sign*norm_fm1*fact_mat0.conj()/norm_fm0
     return [fact_mat0, fact_mat1]
 
-
-
 def _norm_fact_mat(fact_mat):
     return np.linalg.norm(fact_mat, axis=0, keepdims=True)
-
-
 
 def als3herm(x, rank, max_iter, init_fact_mat=None, evol=False):
     """Computes the canonical polyadic decomposition of partially Hermitian 
@@ -158,6 +150,8 @@ def als3herm(x, rank, max_iter, init_fact_mat=None, evol=False):
     return fact_mat, cost_evol
 
 def als4herm2(x, rank, max_iter, init_fact_mat=None, evol=False, anti=False):
+    """Computes the canonical polyadic decomposition of doubly partially Hermitian 
+    4h-order tensors via ALS algorithm"""
     norm_x = np.linalg.norm(x)
     fact_mat =_init_fact_matrices(x, rank, init_fact_mat=init_fact_mat)
     
@@ -176,48 +170,9 @@ def als4herm2(x, rank, max_iter, init_fact_mat=None, evol=False, anti=False):
     return fact_mat, cost_evol
 
 
-
-# HOOI
-
-def hooi(x, rank, max_iter=50, entries=(), evol=False):
-    """Computes Tucker deomposition via HOOI algorithm"""
-    if not entries:
-        entries = tuple(range(len(x.shape)))
-    
-    norm_x = np.linalg.norm(x)
-    us, _ = hosvd(x, rank)
-    cost_evol = []
-    for n_iter in range(max_iter):
-
-        # Update unitary matrices
-        for entry in entries:
-            for mode, u in enumerate(us):
-                if mode == entry:
-                    continue
-                y = nmode_prod(x,u.T.conj(),mode)
-            gc.collect()
-            u_current, _, _ = np.linalg.svd(unfold(y,entry),full_matrices=False)
-            us[entry] = u_current[:,:rank[entry]]
-            
-        # Update core tensor
-        if evol:
-            core = x.copy()
-            for mode, u in enumerate(us):
-                core = nmode_prod(core, u.T.conj(), mode)
-            
-            x_approx = core
-            for mode, u in enumerate(us):
-                x_approx = nmode_prod(x_approx, u, mode)
-            
-            cost_evol += [np.linalg.norm(x-x_approx)/norm_x]
-            
-    core = x.copy()
-    for mode, u in enumerate(us):
-        core = nmode_prod(core, u.T, mode)
-
-    return us, core, cost_evol 
-
-# Power method 
+#############################################################################
+# Power methods
+#############################################################################
 
 def _init_power(x, init_eigvec=None):
     

@@ -1,16 +1,9 @@
 import numpy as np
-# import matplotlib.pyplot as plt
 from colorsys import hls_to_rgb
-# import matplotlib.colors as colors
-# from matplotlib.collections import LineCollection
 from numpy.random import uniform
-
-
-import colorsys
 
 def norm_inner(v1,v2):
     return v1.conj() @ v2/(np.linalg.norm(v1)*np.linalg.norm(v2))
-
 
 def tr_prod(A,B):
     prod = np.abs(A @ np.swapaxes(B, axis1=-2, axis2=-1).conjugate())**2

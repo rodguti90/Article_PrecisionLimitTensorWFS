@@ -4,8 +4,6 @@ import functools
 rng = np.random.default_rng(12345)
 
 
-# def normalize(x):
-#     return x/np.linalg.norm(x)
 
 def outer_tenvec(ten,vec):
     return np.array(ten)[...,None,:]*np.array(vec)[:,:]
@@ -37,6 +35,9 @@ def nmode_prod(x,u,n):
     shape[n] = u.shape[0]
     return fold(u@unfold(x,n),n,shape)
 
+
+# def normalize(x):
+#     return x/np.linalg.norm(x)
 
 # def cum_hada2(mats, mat_inds=None):
 #     if mat_inds is not None:

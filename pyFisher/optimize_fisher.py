@@ -87,7 +87,7 @@ def optimize_input(Xinit,TMs, n_epochs=200, lr=1e-2, noise='gaussian', n_opt_out
     X_final = model.state_dict()['X'].numpy()
     X_final /= (np.sum(np.abs(X_final)**2))**(1/2)
 
-    return 1/loss.item(), X_final, loss_evol
+    return X_final, loss_evol
 
 def optimize_input_list(inputs, TMs, n_epochs=200, lr=1e-2, noise='gaussian', n_opt_output=False):
     Xfinal_list = np.empty_like(inputs)

@@ -1,12 +1,9 @@
 import numpy as np
 import gc
-import scipy
-import functools
-from numba import jit
 
 rng = np.random.default_rng(12345)
 
-from .operations import unfold, nmode_prod
+from .operations import unfold, nmode_prod, sum_outers, cum_khatri_rao
 from .functions import complexdisk_rand
 
 import numpy as np
@@ -82,16 +79,7 @@ def hosvd(x, rank=()):
         s=nmode_prod(s,us[n].T.conj(),n)
     return us, s
 
-
-
-
 # ALS
-
-def outer_tenvec(ten,vec):
-    return np.array(ten)[...,None,:]*np.array(vec)[:,:]
-
-def sum_outers(mats):
-    return np.sum(functools.reduce(outer_tenvec, mats), axis=-1) 
 
 def _init_fact_matrices(x, rank, init_fact_mat=None):
     order = len(x.shape)
@@ -104,35 +92,17 @@ def _init_fact_matrices(x, rank, init_fact_mat=None):
         fact_mat = init_fact_mat
     return fact_mat.copy()
 
-def _cum_khatri_rao(mats, mat_inds=None):
-    if mat_inds is not None:
-        matrices = [mats[i] for i in mat_inds]
-    else:
-        matrices = mats
-    return functools.reduce(scipy.linalg.khatri_rao, matrices)
 
-def _cum_hada2(mats, mat_inds=None):
-    if mat_inds is not None:
-        matrices = [mats[i] for i in mat_inds]
-    else:
-        matrices = mats
-    f = lambda x : x.T @ x
-    return np.prod(list(map(f,matrices)), axis=0)
-
-def _als_mode_loop(x, fact_mat, special_form):
+def _als_mode_loop(x, fact_mat):
     order = len(x.shape)
     for mode in range(order):
         hr_ind = np.arange(mode+1, mode+order)%order
-        kr_prod = _cum_khatri_rao(fact_mat, mat_inds=hr_ind)
-        if special_form:            
-            hada_prod = _cum_hada2(fact_mat, mat_inds=hr_ind)
-            fact_mat[mode] = unfold(x, mode) @ kr_prod @ np.linalg.pinv(hada_prod)
-        else:
-            fact_mat[mode] = unfold(x, mode) @  np.linalg.pinv(kr_prod.T)
+        kr_prod = cum_khatri_rao(fact_mat, mat_inds=hr_ind)
+        fact_mat[mode] = unfold(x, mode) @  np.linalg.pinv(kr_prod.T)
     return fact_mat
 
 
-def als(x, rank, max_iter, init_fact_mat=None, evol=False, special_form=False):
+def als(x, rank, max_iter, init_fact_mat=None, evol=False):
     """Computes the canonical polyadic decomposition via ALS algorithm"""
     
     norm_x = np.linalg.norm(x)
@@ -140,7 +110,7 @@ def als(x, rank, max_iter, init_fact_mat=None, evol=False, special_form=False):
     
     cost_evol = []
     for n_iter in range(max_iter):
-        fact_mat = _als_mode_loop(x, fact_mat, special_form)
+        fact_mat = _als_mode_loop(x, fact_mat)
 
         if evol:
             x_approx = sum_outers(fact_mat)#np.einsum('ij,kj,lj',fact_mat[0],fact_mat[1],fact_mat[2])
@@ -168,7 +138,7 @@ def _norm_fact_mat(fact_mat):
 
 
 
-def als3herm(x, rank, max_iter, init_fact_mat=None, evol=False, special_form=False):
+def als3herm(x, rank, max_iter, init_fact_mat=None, evol=False):
     """Computes the canonical polyadic decomposition of partially Hermitian 
     3rd-order tensors via ALS algorithm"""
 
@@ -177,7 +147,7 @@ def als3herm(x, rank, max_iter, init_fact_mat=None, evol=False, special_form=Fal
     
     cost_evol = []
     for n_iter in range(max_iter):
-        fact_mat = _als_mode_loop(x, fact_mat, special_form)
+        fact_mat = _als_mode_loop(x, fact_mat)
 
         fact_mat[1:] = _symmetrize_fact_mats(fact_mat[1:])
 
@@ -187,14 +157,14 @@ def als3herm(x, rank, max_iter, init_fact_mat=None, evol=False, special_form=Fal
 
     return fact_mat, cost_evol
 
-def als4herm2(x, rank, max_iter, init_fact_mat=None, evol=False, special_form=False,anti=False):
+def als4herm2(x, rank, max_iter, init_fact_mat=None, evol=False, anti=False):
     norm_x = np.linalg.norm(x)
     fact_mat =_init_fact_matrices(x, rank, init_fact_mat=init_fact_mat)
     
     cost_evol = []
     for n_iter in range(max_iter):
 
-        fact_mat = _als_mode_loop(x, fact_mat, special_form)
+        fact_mat = _als_mode_loop(x, fact_mat)
             
         fact_mat[0:2] = _symmetrize_fact_mats(fact_mat[0:2], anti=anti)
         fact_mat[2:] = _symmetrize_fact_mats(fact_mat[2:])

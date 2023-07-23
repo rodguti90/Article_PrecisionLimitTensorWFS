@@ -14,7 +14,7 @@ import numpy as np
 # HOSVD
 #############################################################################
 
-def hosvd(x, rank=()):
+def hosvd(x, rank=(), dict_hermsym={}):
     """Computes the higher-order singular decomposition of a tensor.
 
     Computes the HOSVD via succesisve computations of the SVD of the 
@@ -37,14 +37,21 @@ def hosvd(x, rank=()):
     if not rank:
         rank = x.shape
     for n in range(order):
-        unfold_x = unfold(x,n)
-        if unfold_x.shape[0] < unfold_x.shape[1]:
-            fl=False
-        else:
-            fl=True
-        gc.collect()
-        u,_,_ = np.linalg.svd(unfold_x,full_matrices=fl)
-        us += [u[:,:rank[n]]]
+        compute_svs = True
+        if str(n) in dict_hermsym.keys():
+            sym = dict_hermsym[str(n)]
+            if sym<n:
+                us += [us[sym].conj()]
+                compute_svs = False
+        if compute_svs:
+            unfold_x = unfold(x,n)
+            if unfold_x.shape[0] < unfold_x.shape[1]:
+                fl=False
+            else:
+                fl=True
+            gc.collect()
+            u,_,_ = np.linalg.svd(unfold_x,full_matrices=fl)
+            us += [u[:,:rank[n]]]
     s=x
     for n in range(order):
         s=nmode_prod(s,us[n].T.conj(),n)
@@ -174,49 +181,62 @@ def als4herm2(x, rank, max_iter, init_fact_mat=None, evol=False, anti=False):
 # Power methods
 #############################################################################
 
-def _init_power(x, init_eigvec=None):
-    
-    if init_eigvec is None:
-        eigvec = complexdisk_rand(size=(x.shape[-1]))        
-    else:
-        eigvec = init_eigvec
-    return eigvec.copy()
-
-def power3herm(x, max_iter, init_eigvec=None, evol=False):
+def power3herm(x, max_iter, init_eigvec, evol=False):
     norm_x = np.linalg.norm(x)
-    eigvec =_init_power(x, init_eigvec=init_eigvec)
+    eigvec = init_eigvec.copy()
     
     cost_evol = []
-    ortovec = np.sum(x * eigvec[:,None] * eigvec[None,:].conj(), axis=(1,2))
+    ortovec = np.einsum('ijk,j,k', x, eigvec, eigvec.conj())
     for n_iter in range(max_iter):
-        eigvec = np.sum(x * ortovec[:,None,None] * eigvec[:,None], axis=(0,1))
-        # norm_eigvec = np.linalg.norm(eigvec)
+        eigvec = np.einsum('ijk,i,j', x, ortovec, eigvec)
         eigvec /= np.linalg.norm(eigvec) 
-        ortovec = np.sum(x * eigvec[:,None] * eigvec[None,:].conj(), axis=(1,2))
+        ortovec = np.einsum('ijk,j,k', x, eigvec, eigvec.conj())
         
         if evol:
-            x_approx = ortovec[:,None,None]*eigvec[None,:,None].conj()*eigvec[None,None,:]
+            x_approx = ortovec[:,None,None]*eigvec[:,None].conj()*eigvec
             cost_evol += [np.linalg.norm(x-x_approx)/norm_x]
     return ortovec, eigvec, cost_evol
 
 # @jit(nopython=True)
-def power4herm(x, max_iter, init_vecs, evol=False):
-    norm_x = np.sum(np.abs(x)**2)**(1/2)
+def power4herm(x, max_iter, init_vecs, evol=False, anti=False):
+    norm_x = np.linalg.norm(x)
     outvec = init_vecs[0]
     invec = init_vecs[1]
+    sign = 1
+    if anti:
+        sign = -1
     
     cost_evol = []
     for n_iter in range(max_iter):
-        invec = np.sum(np.sum(np.sum(x * outvec[:,None,None,None].conj() * outvec[:,None,None] * invec[:,None]
-            , axis=0), axis=0), axis=0)
-        invec /= np.sum(np.abs(invec)**2)**(1/2)
-
-        outvec = np.sum(np.sum(np.sum(x * outvec[:,None,None] * invec[:,None] * invec.conj()
-            , axis=1), axis=1), axis=1)
-        lam = np.sum(np.abs(outvec)**2)**(1/2)
+        # invec = np.sum(np.sum(np.sum(x * outvec[:,None,None,None].conj() * outvec[:,None,None] * invec[:,None]
+        #     , axis=0), axis=0), axis=0)
+        invec = np.einsum('ijkl,i,j,k', x, outvec.conj(), sign*outvec, invec)
+        invec /= np.linalg.norm(invec)
+        # outvec = np.sum(np.sum(np.sum(x * outvec[:,None,None] * invec[:,None] * invec.conj()
+        #     , axis=1), axis=1), axis=1)
+        outvec = np.einsum('ijkl,j,k,l', x, sign*outvec, invec, invec.conj())
+        lam = np.linalg.norm(outvec)
         outvec /= lam
         
         if evol:
-            x_approx = lam*outvec[:,None,None,None]*outvec[:,None,None].conj()*invec[:,None].conj()*invec
-            cost_evol += [np.sum(np.abs(x-x_approx)**2)**(1/2)/norm_x]
+            x_approx = sign*lam*outvec[:,None,None,None]*outvec[:,None,None].conj()*invec[:,None].conj()*invec
+            cost_evol += [np.linalg.norm(x-x_approx)/norm_x]
     return [outvec, invec], cost_evol
+
+
+# def power3herm(x, max_iter, init_eigvec=None, evol=False):
+#     norm_x = np.linalg.norm(x)
+#     eigvec =_init_power(x, init_eigvec=init_eigvec)
+    
+#     cost_evol = []
+#     ortovec = np.sum(x * eigvec[:,None] * eigvec[None,:].conj(), axis=(1,2))
+#     for n_iter in range(max_iter):
+#         eigvec = np.sum(x * ortovec[:,None,None] * eigvec[:,None], axis=(0,1))
+#         # norm_eigvec = np.linalg.norm(eigvec)
+#         eigvec /= np.linalg.norm(eigvec) 
+#         ortovec = np.sum(x * eigvec[:,None] * eigvec[None,:].conj(), axis=(1,2))
+        
+#         if evol:
+#             x_approx = ortovec[:,None,None]*eigvec[None,:,None].conj()*eigvec[None,None,:]
+#             cost_evol += [np.linalg.norm(x-x_approx)/norm_x]
+#     return ortovec, eigvec, cost_evol

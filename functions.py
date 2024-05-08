@@ -1,6 +1,9 @@
 import numpy as np
 from colorsys import hls_to_rgb
 from numpy.random import uniform
+import scipy.stats as stats
+
+import matplotlib.pyplot as plt
 
 def norm_inner(v1,v2):
     return v1.conj() @ v2/(np.linalg.norm(v1)*np.linalg.norm(v2))
@@ -40,3 +43,34 @@ def colorize(z, theme = 'dark', saturation = 1., beta = 1.4, transparent = False
         return np.concatenate([c,alpha_channel], axis = -1)
     else:
         return c
+    
+    
+def norm_qqplot(x, ax=None, lgd=True, **kwargs):
+    """Quantile-Quantile plot."""
+    
+    if ax is None:
+        ax = plt.gca()
+    
+    # Extract quantiles
+    quantiles = stats.probplot(x,  dist='norm', fit=False)
+    theor = quantiles[0]
+    observed = quantiles[1]
+    # Rescale to default normal distribution:
+    fit_params = stats.norm.fit(x)
+    observed = (np.sort(observed) - fit_params[-2]) / fit_params[-1]
+
+    mq = ax.scatter(theor, observed, **kwargs)
+    
+    lim_pts = [-5.8,5.8] 
+    ax.set_xlim(lim_pts)
+    ax.set_ylim(lim_pts)
+    lp, = ax.plot(lim_pts, lim_pts, color="r", lw=1.5, ls='-')
+
+    ax.set_aspect("equal")
+    ax.set_xlabel("Theoretical quantiles")
+    ax.set_ylabel("Ordered quantiles")
+    if lgd:
+        ax.legend([mq,lp],['Quantiles', 'Perfect match curve'], 
+                  loc=0, facecolor='white',framealpha=0.9)
+        
+    return ax
